@@ -142,6 +142,22 @@ namespace stems
 
 				g->addLayout(rowDir);
 
+				auto *rowName = new QHBoxLayout();
+				rowName->setSpacing(8);
+				rowName->addWidget(new QLabel(tr("File name format")));
+				edit_filename_format_ = new QLineEdit();
+				edit_filename_format_->setPlaceholderText(tr("Leave empty for date_time_RECORDING folders"));
+				edit_filename_format_->setToolTip(
+					tr("Same codes as OBS: %CCYY %YY %MM %DD %hh %mm %ss. Use / to make folders.\n"
+					   "Example: %CCYY-%MM-%DD/%hh-%mm gives 2026-10-19\\19-45.mp3\n"
+					   "With more than one source, the source name is added after the time."));
+				rowName->addWidget(edit_filename_format_, 1);
+				g->addLayout(rowName);
+				auto *nameHint = new QLabel(tr("Codes: %CCYY %MM %DD %hh %mm %ss  ·  / makes a folder  ·  e.g. %CCYY-%MM-%DD/%hh-%mm"));
+				nameHint->setWordWrap(true);
+				nameHint->setStyleSheet(QStringLiteral("color: gray;"));
+				g->addWidget(nameHint);
+
 				auto *rowFormat = new QHBoxLayout();
 				rowFormat->setSpacing(8);
 				rowFormat->addWidget(new QLabel(tr("File format")));
@@ -357,6 +373,7 @@ namespace stems
 		chk_recording_->setChecked(settings_.trigger_recording);
 		chk_streaming_->setChecked(settings_.trigger_streaming);
 		edit_output_->setText(QString::fromUtf8(settings_.output_dir.c_str()));
+		edit_filename_format_->setText(QString::fromUtf8(settings_.filename_format.c_str()));
 		const QString outputFormat = QString::fromStdString(settings_.output_format == "mp3" ? "mp3" : "wav");
 		int formatIndex = combo_output_format_->findData(outputFormat);
 		if (formatIndex < 0)
@@ -418,6 +435,7 @@ namespace stems
 		s.trigger_recording = chk_recording_->isChecked();
 		s.trigger_streaming = chk_streaming_->isChecked();
 		s.output_dir = edit_output_->text().toUtf8().constData();
+		s.filename_format = edit_filename_format_->text().trimmed().toUtf8().constData();
 		s.output_format = combo_output_format_->currentData().toString().toUtf8().constData();
 		s.wav_bit_depth = combo_wav_bit_depth_->currentData().toInt();
 		s.trim_silence = chk_trim_->isChecked();

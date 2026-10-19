@@ -33,6 +33,74 @@ static std::string now_stamp()
 	return buf;
 }
 
+// Expands OBS-style codes (%CCYY %YY %MM %DD %hh %mm %ss %%) using the current local time.
+static std::string format_now(const std::string &fmt)
+{
+	std::time_t t = std::time(nullptr);
+	std::tm tmv{};
+#if defined(_WIN32)
+	localtime_s(&tmv, &t);
+#else
+	localtime_r(&t, &tmv);
+#endif
+	auto two = [](int v) {
+		char b[8];
+		std::snprintf(b, sizeof(b), "%02d", v);
+		return std::string(b);
+	};
+	std::string out;
+	for (size_t i = 0; i < fmt.size(); ++i) {
+		if (fmt[i] != '%') {
+			out.push_back(fmt[i]);
+			continue;
+		}
+		const std::string rest = fmt.substr(i + 1);
+		if (rest.rfind("CCYY", 0) == 0) {
+			out += std::to_string(tmv.tm_year + 1900);
+			i += 4;
+		} else if (rest.rfind("YY", 0) == 0) {
+			out += two((tmv.tm_year + 1900) % 100);
+			i += 2;
+		} else if (rest.rfind("MM", 0) == 0) {
+			out += two(tmv.tm_mon + 1);
+			i += 2;
+		} else if (rest.rfind("DD", 0) == 0) {
+			out += two(tmv.tm_mday);
+			i += 2;
+		} else if (rest.rfind("hh", 0) == 0) {
+			out += two(tmv.tm_hour);
+			i += 2;
+		} else if (rest.rfind("mm", 0) == 0) {
+			out += two(tmv.tm_min);
+			i += 2;
+		} else if (rest.rfind("ss", 0) == 0) {
+			out += two(tmv.tm_sec);
+			i += 2;
+		} else if (rest.rfind("%", 0) == 0) {
+			out.push_back('%');
+			i += 1;
+		} else {
+			out.push_back('%');
+		}
+	}
+	return out;
+}
+
+// Removes only characters Windows does not allow in a file or folder name.
+static std::string clean_part(const std::string &s)
+{
+	std::string out;
+	for (unsigned char c : s) {
+		if (c < 32 || c == '<' || c == '>' || c == ':' || c == '"' || c == '|' || c == '?' || c == '*')
+			out.push_back('-');
+		else
+			out.push_back((char)c);
+	}
+	while (!out.empty() && (out.back() == ' ' || out.back() == '.'))
+		out.pop_back();
+	return out;
+}
+
 static std::string sanitize_filename(const std::string &s)
 {
 	std::string out;
@@ -215,6 +283,34 @@ bool Session::start()
 
 	fs::path base = settings_.output_dir.empty() ? fs::current_path() : fs::path(settings_.output_dir);
 	fs::path session_dir = base / (stamp + "_" + mode);
+	file_stem_.clear();
+
+	if (!settings_.filename_format.empty()) {
+		// e.g. "%CCYY-%MM-%DD/%hh-%mm" -> folder "2026-10-19", files named "19-45"
+		std::string formatted = format_now(settings_.filename_format);
+		for (auto &c : formatted)
+			if (c == '\\')
+				c = '/';
+		std::vector<std::string> parts;
+		size_t pos = 0;
+		while (pos <= formatted.size()) {
+			size_t next = formatted.find('/', pos);
+			if (next == std::string::npos)
+				next = formatted.size();
+			std::string part = clean_part(formatted.substr(pos, next - pos));
+			if (!part.empty() && part != "." && part != "..")
+				parts.push_back(part);
+			pos = next + 1;
+		}
+		if (!parts.empty()) {
+			session_dir = base;
+			for (size_t i = 0; i + 1 < parts.size(); ++i)
+				session_dir /= parts[i];
+			file_stem_ = parts.back();
+			if (kind_ == SessionKind::Streaming)
+				file_stem_ += " STREAMING";
+		}
+	}
 
 	std::error_code ec;
 	fs::create_directories(session_dir, ec);
@@ -249,6 +345,11 @@ bool Session::start()
 	std::vector<obs_source_t *> sources;
 	enumerate_audio_sources(sources);
 
+	size_t selected_count = 0;
+	for (obs_source_t *src : sources)
+		if (is_selected(obs_source_get_uuid(src)))
+			++selected_count;
+
 	bool any = false;
 	for (obs_source_t *src : sources) {
 		const char *uuid = obs_source_get_uuid(src);
@@ -268,6 +369,19 @@ bool Session::start()
 			}
 		}
 		fs::path wavp = session_dir / (fname + ".wav");
+		if (!file_stem_.empty()) {
+			// One source: "19-45.wav". Several: "19-45 Pulpit_Mic.wav".
+			std::string stem = selected_count > 1 ? file_stem_ + " " + fname : file_stem_;
+			std::string candidate = stem;
+			for (int n = 2; n < 100; ++n) {
+				std::error_code ec2;
+				if (!fs::exists(session_dir / (candidate + ".wav"), ec2) &&
+				    !fs::exists(session_dir / (candidate + ".mp3"), ec2))
+					break;
+				candidate = stem + "_" + std::to_string(n);
+			}
+			wavp = session_dir / (candidate + ".wav");
+		}
 
 		auto rec = std::make_unique<StemRecorder>();
 		if (!rec->start(src, wavp.string(), sample_rate_, channels_)) {
@@ -462,7 +576,9 @@ void Session::write_sidecar_json(const std::vector<StemOutput> &finished) const
 	obs_data_set_array(root, "markers", marks);
 	obs_data_array_release(marks);
 
-	fs::path sidecar = fs::path(session_dir_) / "session.json";
+	// With a custom name format several recordings can share a folder, so the
+	// sidecar is named after the recording instead (e.g. "19-45.json").
+	fs::path sidecar = fs::path(session_dir_) / (file_stem_.empty() ? std::string("session.json") : file_stem_ + ".json");
 	obs_data_save_json_safe(root, sidecar.string().c_str(), "tmp", "bak");
 	obs_data_release(root);
 }

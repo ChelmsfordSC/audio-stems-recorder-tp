@@ -10,6 +10,9 @@ struct Settings {
 	bool trigger_recording = true;
 	bool trigger_streaming = true;
 	std::string output_dir;
+	// Optional OBS-style name, e.g. "%CCYY-%MM-%DD/%hh-%mm". "/" makes folders.
+	// Empty keeps the original "<date>_<time>_RECORDING/<source>.wav" layout.
+	std::string filename_format;
 	std::string output_format = "wav";
 	int wav_bit_depth = 16;
 

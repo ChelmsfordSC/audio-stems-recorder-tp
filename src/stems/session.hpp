@@ -50,6 +50,7 @@ private:
 	SessionKind kind_;
 	Settings settings_;
 	std::string session_dir_;
+	std::string file_stem_; // set when a custom file name format is used
 	std::vector<StemOutput> stems_;
 	uint32_t sample_rate_ = 48000;
 	uint16_t channels_ = 2;

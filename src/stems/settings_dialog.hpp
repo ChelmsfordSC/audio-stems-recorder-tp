@@ -50,6 +50,7 @@ namespace stems
 		QCheckBox *chk_scene_markers_ = nullptr;
 		QCheckBox *chk_use_aliases_ = nullptr;
 		QLineEdit *edit_output_ = nullptr;
+		QLineEdit *edit_filename_format_ = nullptr;
 		QComboBox *combo_output_format_ = nullptr;
 		QComboBox *combo_wav_bit_depth_ = nullptr;
 		QTableWidget *table_sources_ = nullptr;

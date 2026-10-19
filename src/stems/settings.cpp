@@ -69,6 +69,7 @@ Settings load_settings()
 	const QString out = root.value("output_dir").toString().trimmed();
 	if (!out.isEmpty())
 		s.output_dir = out.toStdString();
+	s.filename_format = root.value("filename_format").toString().trimmed().toStdString();
 
 	const QString output_format = root.value("output_format").toString("wav").trimmed().toLower();
 	s.output_format = (output_format == "mp3") ? "mp3" : "wav";
@@ -129,6 +130,7 @@ void save_settings(const Settings &s)
 	root["trigger_recording"] = s.trigger_recording;
 	root["trigger_streaming"] = s.trigger_streaming;
 	root["output_dir"] = QString::fromStdString(s.output_dir);
+	root["filename_format"] = QString::fromStdString(s.filename_format);
 	root["output_format"] = QString::fromStdString(s.output_format == "mp3" ? "mp3" : "wav");
 	root["wav_bit_depth"] = (s.wav_bit_depth == 24 || s.wav_bit_depth == 32) ? s.wav_bit_depth : 16;
 
